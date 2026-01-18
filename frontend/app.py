@@ -3,43 +3,104 @@ import pandas as pd
 import numpy as np
 import os
 import sys
+from fpdf import FPDF
+import base64
 
-# ---------------------------------------------------------
-# 1. SETUP & IMPORTS
-# ---------------------------------------------------------
-current_dir = os.path.dirname(os.path.abspath(__file__))
-backend_path = os.path.join(current_dir, '..')
-sys.path.append(backend_path)
+# ... (Imports)
 
-try:
-    from backend.scripts import predict_materials
-    from backend.scripts import predict_labour
-    from backend.scripts import predict_risk
-    from backend.scripts import optimize_resources # <--- NEW IMPORT
-    BACKEND_ONLINE = True
-except ImportError as e:
-    st.error(f"❌ Backend Scripts Not Found: {e}")
-    BACKEND_ONLINE = False
+def generate_pdf_report(df_plan, total_cost, risk_class, proj_id, week, preds):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    
+    # Title
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(200, 10, txt="SiteSync AI - Weekly Project Report", ln=True, align='C')
+    pdf.ln(5)
+    
+    # Context
+    pdf.set_font("Arial", size=11)
+    pdf.cell(200, 8, txt=f"Project ID: {proj_id}", ln=True)
+    pdf.cell(200, 8, txt=f"Week Number: {week}", ln=True)
+    pdf.cell(200, 8, txt=f"Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}", ln=True)
+    pdf.ln(5)
+    
+    # --- PANEL 1 & 2: PREDICTIONS ---
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(200, 10, txt="1. AI Requirement Predictions", ln=True)
+    pdf.set_font("Arial", size=11)
+    
+    # Material
+    pdf.set_font("Arial", 'B', 11); pdf.cell(200, 8, txt="Material Needs (Site Context):", ln=True); pdf.set_font("Arial", size=11)
+    pdf.cell(100, 6, txt=f" - Cement: {preds.get('req_cement_bags', 0)} Bags", ln=True)
+    pdf.cell(100, 6, txt=f" - Steel: {preds.get('req_steel_kg', 0)} Kg", ln=True)
+    pdf.cell(100, 6, txt=f" - Bricks: {preds.get('req_bricks_nos', 0)} Nos", ln=True)
+    pdf.cell(100, 6, txt=f" - Sand: {preds.get('req_sand_tons', 0)} Tons", ln=True)
+    pdf.ln(2)
+    
+    # Labour
+    pdf.set_font("Arial", 'B', 11); pdf.cell(200, 8, txt="Workforce Needs (Task Based):", ln=True); pdf.set_font("Arial", size=11)
+    pdf.cell(100, 6, txt=f" - Skilled Masons: {preds.get('req_skilled_labour', 0)}", ln=True)
+    pdf.cell(100, 6, txt=f" - Unskilled Helpers: {preds.get('req_unskilled_labour', 0)}", ln=True)
+    pdf.ln(5)
 
-st.set_page_config(page_title="Construction AI Manager Pro", layout="wide", page_icon="🏗️")
+    # --- PANEL 3: RISK ---
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(200, 10, txt="2. Risk Assessment", ln=True)
+    pdf.set_font("Arial", size=11)
+    pdf.cell(100, 6, txt=f"Risk Class: {preds.get('risk_class', 'Unknown')}", ln=True)
+    pdf.cell(100, 6, txt=f"Risk Score: {preds.get('risk_score', 0)}/15", ln=True)
+    pdf.cell(100, 6, txt=f"Est. Labour Shortfall: {preds.get('labour_shortfall_est', 0)} Workers", ln=True)
+    pdf.ln(5)
 
-# Custom CSS
-st.markdown("""
-    <style>
-    .metric-card { background-color: #f8f9fa; padding: 15px; border-radius: 10px; border: 1px solid #dee2e6; }
-    .panel-header { font-size: 20px; font-weight: bold; margin-bottom: 10px; color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px; }
-    .stButton>button { width: 100%; background-color: #2ecc71; color: white; font-weight: bold; font-size: 18px; padding: 10px; }
-    .risk-high { color: #e74c3c; font-weight: bold; }
-    .risk-med { color: #f39c12; font-weight: bold; }
-    .risk-low { color: #27ae60; font-weight: bold; }
-    </style>
-""", unsafe_allow_html=True)
+    # --- INVENTORY ---
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(200, 10, txt="3. Current Inventory Levels", ln=True)
+    pdf.set_font("Arial", size=11)
+    inv = preds.get('inventory', {})
+    pdf.cell(100, 6, txt=f" - Cement: {inv.get('Cement', 0)} Bags", ln=True)
+    pdf.cell(100, 6, txt=f" - Steel: {inv.get('Steel', 0)} Kg", ln=True)
+    pdf.cell(100, 6, txt=f" - Bricks: {inv.get('Bricks', 0)} Nos", ln=True)
+    pdf.cell(100, 6, txt=f" - Sand: {inv.get('Sand', 0)} Tons", ln=True)
+    pdf.ln(5)
+    
+    # --- PANEL 4: PROCUREMENT ---
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(200, 10, txt="4. Optimized Procurement Plan", ln=True)
+    
+    # Table Header
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(35, 8, "Category", 1)
+    pdf.cell(45, 8, "Resource", 1)
+    pdf.cell(25, 8, "Net Qty", 1)
+    pdf.cell(35, 8, "Est Cost (INR)", 1)
+    pdf.cell(40, 8, "Note", 1)
+    pdf.ln()
+    
+    # Table Content
+    pdf.set_font("Arial", size=10)
+    for index, row in df_plan.iterrows():
+        pdf.cell(35, 8, str(row['Category']), 1)
+        pdf.cell(45, 8, str(row['Resource']), 1)
+        pdf.cell(25, 8, str(row['Net_Order_Qty']), 1)
+        pdf.cell(35, 8, str(row['Est_Cost']), 1)
+        pdf.cell(40, 8, str(row['Note']), 1)
+        pdf.ln()
+        
+    pdf.ln(5)
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(200, 10, txt=f"Total Weekly Cost: INR {total_cost:,.2f}", ln=True)
+    
+    # Save Logic (Return binary)
+    return pdf.output(dest='S').encode('latin-1')
+
+# ... (Existing Code)
 
 # ---------------------------------------------------------
 # 2. NAVIGATION & STATE
 # ---------------------------------------------------------
 st.sidebar.title("🏗️ Site Manager")
-page = st.sidebar.radio("Navigate", ["📊 Prediction Dashboard", "⚙️ Optimization Engine"])
+page = st.sidebar.radio("Navigate", ["📊 Prediction Dashboard", "⚙️ Optimization Engine", "📈 Analytics Dashboard"])
 st.sidebar.markdown("---")
 
 # Global Context (Restored)
@@ -47,176 +108,90 @@ proj_id = st.sidebar.text_input("Project ID", "PROJ-2025-001")
 week_num = st.sidebar.number_input("Current Week", min_value=1, value=15)
 st.sidebar.markdown("---")
 
-if 'last_predictions' not in st.session_state:
-    st.session_state.last_predictions = None
-
-if not BACKEND_ONLINE:
-    st.stop()
-
-# =========================================================
-# PAGE 1: PREDICTION DASHBOARD
-# =========================================================
-if page == "📊 Prediction Dashboard":
-    st.title("🚀 Construction AI Dashboard")
-    st.markdown("### Integrated 4-Panel Prediction System")
-    
-    # --- INPUTS ---
-    with st.container():
-        st.markdown('<div class="panel-header">1️⃣ Panel 1: Material (Site Context)</div>', unsafe_allow_html=True)
-        c1, c2, c3, c4 = st.columns(4)
-        site_area = c1.number_input("Site Area (sqft)", 1000, 50000, 2400)
-        dims = c1.selectbox("Dimensions", ["30x40", "40x60", "50x80", "100x100"])
-        floors = c2.number_input("Total Floors", 1, 50, 4)
-        floors_comp = c2.number_input("Floors Completed", 0, 50, 2)
-        stage_options = [
-            "Stage 1: Foundation (Footings, Rebar below ground)",
-            "Stage 2: Plinth & Backfilling (Beams, Compaction)",
-            "Stage 3: Structural Frame (Columns, Beams, Slabs)",
-            "Stage 4: Masonry & Roof (Walls, Lintels)",
-            "Stage 5: Building Envelope (Plastering, Finishing)"
-        ]
-        stage = c3.selectbox("Stage", stage_options, index=2)
-        prop_type = c3.selectbox("Type", ["1BHK", "2BHK", "3BHK", "Godown"], index=1)
-        weather = c4.selectbox("Weather", ["Normal", "Light_Rain", "Heavy_Rain", "High_Wind"])
-        lost_days = c4.number_input("Lost Days", 0, 30, 0)
-        pace = c4.radio("Pace", ["Normal", "Fast_Track"], horizontal=True)
-
-    with st.container():
-        st.markdown("---")
-        st.markdown('<div class="panel-header">2️⃣ Panel 2: Labour (Task)</div>', unsafe_allow_html=True)
-        l1, l2 = st.columns(2)
-        task_type = l1.selectbox("Primary Task", ["Concrete_Pour", "Brick_Masonry", "Plastering", "Rebar_Binding"])
-        prod_rate = l2.slider("Productivity Rate", 0.5, 1.5, 1.0)
-
-    with st.container():
-        st.markdown("---")
-        st.markdown('<div class="panel-header">3️⃣ Panel 3: Risk Factors</div>', unsafe_allow_html=True)
-        r1, r2, r3, r4 = st.columns(4)
-        mat_status = r1.selectbox("Material Availability", ["Available", "Limited", "Shortage"])
-        lab_status = r2.selectbox("Labour Availability", ["Sufficient", "Moderate", "Critical"])
-        hist_delays = r3.number_input("Past Delays", 0, 10, 2)
-        prog_gap = r4.number_input("Progress Gap (%)", -50.0, 50.0, 12.0)
-
-    # --- EXECUTION ---
-    st.markdown("---")
-    if st.button("🧠 RUN INTEGRATED AI PREDICTION"):
-        try:
-            # Step 1: Material
-            stage_map = {
-                "Stage 1: Foundation (Footings, Rebar below ground)": 1,
-                "Stage 2: Plinth & Backfilling (Beams, Compaction)": 2,
-                "Stage 3: Structural Frame (Columns, Beams, Slabs)": 3,
-                "Stage 4: Masonry & Roof (Walls, Lintels)": 4,
-                "Stage 5: Building Envelope (Plastering, Finishing)": 5
-            }
-            mat_inputs = {
-                "week_number": 15, "site_area_sqft": site_area, "total_floors": floors,
-                "floors_completed": floors_comp, "construction_stage": stage_map[stage],
-                "property_type": prop_type, "lost_days": lost_days,
-                "weather_condition": weather, "site_dimensions": dims, "work_pace": pace
-            }
-            res_mat = predict_materials.predict_material_needs(mat_inputs)
-            
-            # Step 2: Labour
-            lab_inputs = {
-                "week_number": 15, "site_area_sqft": site_area, "construction_stage": stage_map[stage],
-                "floors_completed": floors_comp, "is_complex_design": 0, "productivity_rate": prod_rate,
-                "req_cement_bags": res_mat['req_cement_bags'], "req_bricks_nos": res_mat['req_bricks_nos'],
-                "req_steel_kg": res_mat['req_steel_kg'], "req_sand_tons": res_mat['req_sand_tons'],
-                "task_type": task_type
-            }
-            res_lab = predict_labour.predict_labour_needs(lab_inputs)
-            
-            # Step 3: Risk
-            risk_inputs = {
-                "req_skilled_labour": res_lab['req_skilled_labour'],
-                "req_unskilled_labour": res_lab['req_unskilled_labour'],
-                "material_avail_status": mat_status, "labour_avail_status": lab_status,
-                "weather_condition": weather, "progress_gap_pct": prog_gap,
-                "hist_material_delay_count": hist_delays, "construction_stage": stage_map[stage]
-            }
-            res_risk = predict_risk.predict_risk_metrics(risk_inputs)
-            
-            # SAVE STATE
-            full_results = {**res_mat, **res_lab, **res_risk}
-            st.session_state.last_predictions = full_results
-            st.success("✅ Prediction Complete! Results Saved for Optimization.")
-
-            # DISPLAY
-            c1, c2, c3 = st.columns(3)
-            c1.subheader("📦 Materials"); c1.write(res_mat)
-            c2.subheader("👷 Labour"); c2.write(res_lab)
-            
-            r_color = {"Low": "green", "Med": "orange", "High": "red"}.get(res_risk['risk_class'], "black")
-            c3.subheader("🚨 Risk Metrics")
-            c3.metric("Shortfall Est", f"{res_risk['labour_shortfall_est']} Workers")
-            c3.metric("Risk Score", f"{res_risk['risk_score']}/15")
-            c3.markdown(f"**Class:** :{r_color}[{res_risk['risk_class']}]")
-
-        except Exception as e:
-            st.error(f"Error: {e}")
+# ... (Page 1 Logic) ...
 
 # =========================================================
 # PAGE 2: OPTIMIZATION ENGINE
 # =========================================================
 elif page == "⚙️ Optimization Engine":
-    st.title("⚙️ Resource Optimization Engine (PuLP)")
-    st.markdown("Uses **Linear Programming** to minimize cost while meeting safety buffers defined by the Risk Class.")
+    st.title("⚙️ Resource Optimization Engine")
+    # ... (Optimization Logic)
     
-    if st.session_state.last_predictions is None:
-        st.warning("⚠️ No prediction data found. Please run the 'Prediction Dashboard' first.")
-    else:
-        preds = st.session_state.last_predictions
-        # Map Risk to String for Display
-        risk_raw = preds.get('risk_class', 'Unknown')
-        risk_map = {0: 'Low', 1: 'Medium', 2: 'High', 'Low': 'Low', 'Medium': 'Medium', 'High': 'High'}
-        risk_label = risk_map.get(risk_raw, str(risk_raw))
-        
-        st.info(f"Using Prediction Data (Risk: {risk_label})")
-        
-        # Inventory Input Section
-        st.markdown("### 📦 Current Inventory (Subtracts from Demand)")
-        i1, i2, i3, i4 = st.columns(4)
-        inv_cement = i1.number_input("Stock: Cement (Bags)", 0, 5000, 0)
-        inv_steel = i2.number_input("Stock: Steel (Kg)", 0, 10000, 0)
-        inv_bricks = i3.number_input("Stock: Bricks (Nos)", 0, 50000, 0)
-        inv_sand = i4.number_input("Stock: Sand (Tons)", 0, 500, 0)
-        
-        preds['inventory'] = {
-            "Cement": inv_cement,
-            "Steel": inv_steel,
-            "Bricks": inv_bricks,
-            "Sand": inv_sand
-        }
-
         if st.button("🚀 GENERATE PROCUREMENT PLAN"):
-            try:
-                df_plan = optimize_resources.optimize_procurement(preds)
+            # ... (Optimization Execution) ...
+            
+                # METRICS DISPLAY
+                # ...
                 
-                # Metrics
-                total_cost = df_plan['Est_Cost'].sum()
-                st.metric("💰 Total Estimated Weekly Cost", f"₹ {total_cost:,.2f}")
-                
-                # Display Plan
-                st.subheader("📋 Optimized Procurement Plan")
-                
-                # Split Material vs Labour tables
-                st.markdown("#### 📦 Material Orders")
-                # Filter for materials and show logical columns
-                df_mat = df_plan[df_plan['Category']=='Material']
-                st.dataframe(
-                    df_mat[['Resource', 'Total_Need_With_Buffer', 'Inventory_Used', 'Net_Order_Qty', 'Sourced_Regular', 'Sourced_Premium', 'Est_Cost', 'Note']], 
-                    use_container_width=True
+                # PDF REPORT
+                st.markdown("### 📄 Export Report")
+                pdf_bytes = generate_pdf_report(df_plan, total_cost, preds.get('risk_class', 'Unknown'), proj_id, week_num, preds)
+                st.download_button(
+                    label="⬇️ Download Procurement Invoice (PDF)",
+                    data=pdf_bytes,
+                    file_name=f"Procurement_Plan_{proj_id}_Week{week_num}.pdf",
+                    mime="application/pdf"
                 )
                 
-                st.markdown("#### 👷 Workforce Hiring")
-                st.dataframe(df_plan[df_plan['Category']=='Labour'], use_container_width=True)
-                
-                # Highlight Alerts
-                alerts = df_plan[df_plan['Note'].str.contains("⚠️")]
-                if not alerts.empty:
-                    st.error("⚠️ CRITICAL ALERTS: Premium sourcing required!")
-                    st.table(alerts[['Resource', 'Note', 'Est_Cost']])
+# =========================================================
+# PAGE 3: ANALYTICS DASHBOARD
+# =========================================================
+elif page == "📈 Analytics Dashboard":
+    st.title("📈 Project Analytics")
+    
+    # Load Data
+    project_root = os.path.dirname(backend_path)
+    log_file = os.path.join(project_root, 'outputs', 'pipeline_results', 'prediction_history.csv')
+    
+    if not os.path.exists(log_file):
+        st.warning("No historical data found. Run some predictions first!")
+    else:
+        df_log = pd.read_csv(log_file)
+        
+        # Filter by Project ID
+        df_proj = df_log[df_log['Project_ID'] == proj_id]
+        
+        if df_proj.empty:
+            st.warning(f"No records for Project ID: {proj_id}")
+        else:
+            # METRICS ROW
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Total Weeks Logged", len(df_proj))
+            avg_risk = df_proj['risk_score'].mean()
+            m2.metric("Avg Risk Score", f"{avg_risk:.2f}/15")
+            last_gap = df_proj.iloc[-1].get('Progress_Gap_Pct', 0) if 'Progress_Gap_Pct' in df_proj.columns else 0
+            m3.metric("Current Schedule Gap", f"{last_gap}%", delta_color="inverse")
+            
+            st.markdown("---")
+            
+            # CHARTS ROW 1
+            c1, c2 = st.columns(2)
+            
+            with c1:
+                st.subheader("📅 Schedule Tracking (Planned vs Actual)")
+                if 'Progress_Gap_Pct' in df_proj.columns:
+                    st.line_chart(df_proj.set_index('Week_Number')['Progress_Gap_Pct'])
+                    st.caption("Positive values indicate delays (Actual < Planned).")
+                else:
+                    st.warning("Progress data not available in older logs.")
                     
-            except Exception as e:
-                st.error(f"Optimization Error: {e}")
+            with c2:
+                st.subheader("🧱 Material Demand Trend")
+                mat_cols = ['req_cement_bags', 'req_steel_kg', 'req_bricks_nos']
+                # clean column names for display
+                df_mat = df_proj.set_index('Week_Number')[mat_cols]
+                df_mat.columns = ["Cement", "Steel", "Bricks"]
+                st.bar_chart(df_mat)
+            
+            st.markdown("---")
+            
+            # CHARTS ROW 2
+            st.subheader("👷 Labour Workforce Trend")
+            lab_cols = ['req_skilled_labour', 'req_unskilled_labour']
+            df_lab = df_proj.set_index('Week_Number')[lab_cols]
+            df_lab.columns = ["Skilled Masons", "Unskilled Helpers"]
+            st.line_chart(df_lab)
+            
+            # Raw Data
+            with st.expander("View Raw Data Log"):
+                st.dataframe(df_proj)
