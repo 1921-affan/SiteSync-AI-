@@ -1,0 +1,4 @@
+equip_id,equip_name,daily_rental_inr,max_available_units
+E01,Concrete_Mixer,2000,8
+E02,Excavator,11000,3
+E03,Mobile_Crane,18000,2

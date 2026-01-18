@@ -1,0 +1,5 @@
+material_id,material_name,unit,cost_regular_inr,cost_express_inr,max_supply_weekly_regular,site_storage_limit
+M01,Cement,Bag,390,480,800,1500
+M02,Steel,Kg,78,95,8000,15000
+M03,Bricks,Nos,12,16,20000,40000
+M04,Sand,Ton,1450,2200,100,200
