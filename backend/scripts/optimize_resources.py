@@ -172,8 +172,13 @@ def optimize_procurement(predictions):
     
     # Materials
     for name, data in mat_vars.items():
-        q_reg = data['reg_var'].varValue
-        q_exp = data['exp_var'].varValue
+        # SAFELY GET VALUES (Handle None from Solver)
+        val_reg = data['reg_var'].varValue
+        val_exp = data['exp_var'].varValue
+        
+        q_reg = val_reg if val_reg is not None else 0.0
+        q_exp = val_exp if val_exp is not None else 0.0
+        
         cost = (q_reg * data['reg_cost']) + (q_exp * data['exp_cost'])
         
         note = "Standard"
@@ -190,8 +195,11 @@ def optimize_procurement(predictions):
         
     # Labour
     for name, data in lab_vars.items():
-        h_reg = data['reg_var'].varValue
-        h_prem = data['prem_var'].varValue
+        val_reg = data['reg_var'].varValue
+        val_prem = data['prem_var'].varValue
+        
+        h_reg = val_reg if val_reg is not None else 0.0
+        h_prem = val_prem if val_prem is not None else 0.0
         
         # Recalculate cost for display
         c_reg = df_lab_costs[df_lab_costs['labour_role']==name].iloc[0]['daily_wage_inr'] * 6

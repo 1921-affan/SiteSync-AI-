@@ -98,6 +98,18 @@ def predict_risk_metrics(inputs):
     risk_score_pred = model_scorer.predict(input_B)[0][0]
     risk_score = max(0.0, float(risk_score_pred))
     
+    # --- NUMERICAL MULTIPLIERS (User Defined) ---
+    # 1. Schedule Gap: +0.25 pts per 1% Gap
+    gap_val = max(0, inputs.get('progress_gap_pct', 0))
+    risk_score += (gap_val * 0.25)
+    
+    # 2. Past Delays: +0.4 pts per Delay
+    delays_val = max(0, inputs.get('hist_material_delay_count', 0))
+    risk_score += (delays_val * 0.4)
+    
+    # Cap at 15
+    risk_score = min(15.0, risk_score)
+    
     # --- 4. MODEL C: CLASSIFIER ---
     # Features: ['risk_score_debug', 'progress_gap_pct']
     # Note: training script called it 'risk_score_debug', we keep name for consistency mapping
