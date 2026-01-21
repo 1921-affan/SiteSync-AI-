@@ -14,7 +14,7 @@ The application is built around a logical flow of **4 Intelligent Panels**:
     *   **Output:** Precise quantity predictions for **Cement, Steel, Bricks, and Sand**.
     *   **Model:** Random Forest Regressor (Trained on 5,000+ construction weeks).
 
-*   **Panel 2: Labour Allocation (Task Aware)**
+*   **Panel 2: Labour Allocation (Task Aware) System**
     *   **Input:** Material Volume (from Panel 1), Primary Task (e.g., Concrete Pour vs. Excavation), Productivity Rate.
     *   **Output:** Required **Skilled Masons** and **Unskilled Helpers**.
     *   **Intelligence:** Context-aware; "Excavation" requests helpers, "Brickwork" requests masons. Adjusts for productivity norms.
